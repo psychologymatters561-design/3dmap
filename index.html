@@ -230,6 +230,34 @@ body.cine .cineexit{display:block}
 }
 body.cine .cinetitle{display:block}
 
+/* ---------- Utilities panel ---------- */
+.util-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.uchip{
+  display:flex;align-items:center;gap:8px;padding:9px 10px;cursor:pointer;text-align:left;
+  background:none;border:1px solid var(--hairline);border-radius:10px;color:var(--text);
+  font:500 12px 'IBM Plex Sans',sans-serif;transition:border-color .2s,background .2s;
+}
+.uchip:hover{border-color:rgba(255,255,255,.25)}
+.uchip.active{border-color:var(--saffron);background:var(--saffron-soft)}
+.uchip .sw{flex:none;width:10px;height:10px;border-radius:50%}
+
+/* ---------- Map popups (utilities) ---------- */
+.maplibregl-popup-content{
+  background:var(--panel)!important;color:var(--text)!important;
+  border:1px solid var(--hairline);border-radius:12px!important;padding:12px 14px!important;
+  font-family:'IBM Plex Sans',sans-serif;box-shadow:var(--shadow)!important;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip{border-top-color:rgba(11,14,20,.84)!important}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip{border-bottom-color:rgba(11,14,20,.84)!important}
+.maplibregl-popup-close-button{color:var(--text-dim)!important;font-size:16px;right:4px;top:2px}
+.pop-name{font-weight:600;font-size:13px;padding-right:14px}
+.pop-cat{font:400 10px 'IBM Plex Mono',monospace;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin:3px 0 8px}
+.pop-btn{
+  cursor:pointer;background:var(--saffron-soft);border:1px solid rgba(255,122,26,.35);
+  color:var(--saffron);border-radius:8px;padding:6px 10px;font:600 11px 'IBM Plex Sans',sans-serif;
+}
+
 /* ---------- Toast ---------- */
 .toast{
   position:fixed;left:50%;transform:translateX(-50%);bottom:calc(120px + env(safe-area-inset-bottom));z-index:60;
@@ -247,6 +275,8 @@ body.cine .cinetitle{display:block}
   .search-hint{display:none}
   .hud{display:none}
   .panel{top:auto;bottom:calc(64px + env(safe-area-inset-bottom));left:10px;width:calc(100vw - 20px);max-height:48vh}
+  .ctl{width:38px;height:38px;border-radius:10px}
+  .rail{gap:6px}
 }
 @media (prefers-reduced-motion:reduce){
   *{transition:none!important}
@@ -278,11 +308,17 @@ body.cine .cinetitle{display:block}
   <button class="ctl active" id="btnTerrain" title="Toggle terrain" aria-label="Toggle terrain elevation">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20L9 8l4 7 3-4 5 9H3z"/></svg>
   </button>
+  <button class="ctl active" id="btnRoads" title="Road &amp; highway network over satellite" aria-label="Toggle road network overlay">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 21L10 3M19 21L14 3M12 5.5v3M12 11.5v3M12 17.5v3"/></svg>
+  </button>
   <button class="ctl" id="btnDrone" title="Drone view — cinematic flight over this spot" aria-label="Start drone view">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="5" r="2.4"/><circle cx="19" cy="5" r="2.4"/><circle cx="5" cy="19" r="2.4"/><circle cx="19" cy="19" r="2.4"/><rect x="9.4" y="9.4" width="5.2" height="5.2" rx="1.4"/><path d="M7 7l2.6 2.6M17 7l-2.6 2.6M7 17l2.6-2.6M17 17l-2.6-2.6"/></svg>
   </button>
   <button class="ctl" id="btnDir" title="Directions" aria-label="Toggle directions panel">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l10 10-10 10L2 12z"/><path d="M9 13v-2.5a1.5 1.5 0 011.5-1.5H15M13 7l2.5 2-2.5 2"/></svg>
+  </button>
+  <button class="ctl" id="btnUtil" title="Public utilities — hospitals, schools, fuel, water…" aria-label="Toggle public utilities panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-5.6-7-11a7 7 0 0114 0c0 5.4-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>
   </button>
   <button class="ctl active" id="btnFx" title="Toggle live weather effects (wind / rain)" aria-label="Toggle weather effects overlay">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h11a3 3 0 100-3M3 13h15a3 3 0 110 3M3 18h8a2.5 2.5 0 11.5 2"/></svg>
@@ -332,6 +368,19 @@ body.cine .cinetitle{display:block}
     <button class="abtn" id="dirGo">Route →</button>
   </div>
   <div id="dirOut"></div>
+</aside>
+
+<!-- Public utilities panel -->
+<aside class="panel" id="utilPanel" aria-label="Public utilities">
+  <button class="close" id="utilClose" aria-label="Close utilities">✕</button>
+  <h2>Public utilities</h2>
+  <div class="sub">Live from OpenStreetMap · pick categories</div>
+  <div class="util-grid" id="utilGrid"></div>
+  <div class="actions">
+    <button class="abtn" id="utilReload">↻ Load in this view</button>
+    <button class="abtn ghost" id="utilClear">Clear all</button>
+  </div>
+  <div class="loading-note" id="utilNote">Zoom to a city or village, pick categories, and the pins appear on the map. Tap a pin for its name &amp; one-tap directions.</div>
 </aside>
 
 <!-- Drone cinematic chrome -->
@@ -460,6 +509,13 @@ try { map.touchPitch.enable(); } catch (e) { /* not critical */ }
 /* ---------- Terrain + satellite + hillshade + sky + buildings ---------- */
 let terrainOn = true;
 let satOn = true;
+let roadsOn = true;
+const ROAD_IDS = ['rd-case', 'rd-hwy', 'rd-pri', 'rd-min', 'rd-rail'];
+function updateRoadVisibility() {
+  // overlay only matters on satellite — streets mode draws its own roads
+  const vis = (satOn && roadsOn) ? 'visible' : 'none';
+  ROAD_IDS.forEach(id => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis); });
+}
 
 function firstSymbolId() {
   try {
@@ -505,6 +561,45 @@ map.on('load', () => {
       layout: { visibility: 'visible' }
     }, firstSymbolId());
   } catch (e) { console.warn('satellite skipped', e); }
+
+  // Road & highway connectivity — drawn ABOVE the imagery so the network
+  // stays readable on satellite. Colour encodes importance: highways orange,
+  // primary/secondary yellow, local roads white, railways dashed violet.
+  try {
+    const styleNow = map.getStyle();
+    const vecSrcR = Object.keys(styleNow.sources).find(k => styleNow.sources[k].type === 'vector');
+    if (vecSrcR) {
+      const fs = firstSymbolId();
+      const rd = (id, classes, paint, minzoom) => map.addLayer({
+        id: id, type: 'line', source: vecSrcR, 'source-layer': 'transportation',
+        filter: ['match', ['get', 'class'], classes, true, false],
+        minzoom: minzoom || 0,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: paint
+      }, fs);
+      rd('rd-case', ['motorway', 'trunk', 'primary', 'secondary'], {
+        'line-color': '#0B0E14', 'line-opacity': 0.5,
+        'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 6, 2.4, 10, 4.5, 14, 10, 18, 24]
+      });
+      rd('rd-hwy', ['motorway', 'trunk'], {
+        'line-color': '#ffa733',
+        'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 6, 1.4, 10, 2.8, 14, 6.5, 18, 17]
+      });
+      rd('rd-pri', ['primary', 'secondary'], {
+        'line-color': '#ffd24d', 'line-opacity': 0.95,
+        'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 8, 1, 12, 2.6, 14, 4.5, 18, 12]
+      });
+      rd('rd-min', ['tertiary', 'minor', 'service'], {
+        'line-color': '#ffffff', 'line-opacity': 0.7,
+        'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 12, 0.7, 16, 3, 19, 9]
+      }, 12);
+      rd('rd-rail', ['rail', 'transit'], {
+        'line-color': '#cdb6ff', 'line-opacity': 0.8, 'line-dasharray': [2, 2.5],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 14, 2.2]
+      });
+      updateRoadVisibility();
+    }
+  } catch (e) { console.warn('roads overlay skipped', e); }
 
   // Daylight atmosphere — haze on the horizon sells the realism at a tilt
   try {
@@ -626,7 +721,7 @@ async function geocode(q) {
   if (!q || q === lastQuery) return;
   lastQuery = q;
   try {
-    const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=in&limit=6&q=' + encodeURIComponent(q);
+    const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=in&limit=10&addressdetails=1&q=' + encodeURIComponent(q);
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
     const data = await res.json();
     renderResults(data);
@@ -642,12 +737,18 @@ function renderResults(data) {
   } else if (!data.length) {
     resultsEl.innerHTML = '<div class="result note">No match in India. Try adding the district or state.</div>';
   } else {
+    const seen = new Set();
     data.forEach(r => {
+      if (seen.has(r.place_id)) return;
+      seen.add(r.place_id);
       const b = document.createElement('button');
       b.className = 'result';
       b.setAttribute('role', 'option');
       const name = r.display_name.split(',').slice(0, 3).join(',');
-      b.innerHTML = escapeHtml(name) + '<span class="type">' + escapeHtml(r.type || r.class || 'place') + '</span>';
+      const a = r.address || {};
+      const where = [a.state_district || a.county, a.state].filter(Boolean).join(', ');
+      b.innerHTML = escapeHtml(name) + '<span class="type">' +
+        escapeHtml((r.type || r.class || 'place') + (where ? ' · ' + where : '')) + '</span>';
       b.addEventListener('click', () => {
         closeResults();
         input.value = name;
@@ -700,6 +801,8 @@ async function loadPlaceInfo(p) {
   ipBody.innerHTML = '<div class="loading-note"><span class="spin"></span>&nbsp; Fetching live weather &amp; mapping the terrain…</div>';
   dirPanel.classList.remove('open');
   document.getElementById('btnDir').classList.remove('active');
+  document.getElementById('utilPanel').classList.remove('open');
+  document.getElementById('btnUtil').classList.remove('active');
   infoPanel.classList.add('open');
 
   const [wx, elev] = await Promise.all([fetchWeather(p), fetchElevationProfile(p)]);
@@ -949,6 +1052,7 @@ btnFx.addEventListener('click', () => {
 let droneRAF = null;
 let droneActive = false;
 let dronePrevPixelRatio = null;
+let lastDroneStop = 0;
 
 function startDrone(target) {
   if (droneActive) return;
@@ -1037,6 +1141,7 @@ function startDrone(target) {
 function stopDrone() {
   if (!droneActive) return;
   droneActive = false;
+  lastDroneStop = performance.now();
   if (droneRAF !== null) { cancelAnimationFrame(droneRAF); droneRAF = null; }
   try { map.stop(); } catch (e) { /* nothing in flight */ }
   try {
@@ -1066,9 +1171,12 @@ const dirFromInput = document.getElementById('dirFrom');
 const dirToInput = document.getElementById('dirTo');
 const dirOut = document.getElementById('dirOut');
 const dirState = { from: null, to: null, markers: [], pick: null };
+let clickConsumedByPick = false; // lets the explore handler skip pick-pin clicks
 
 function openDirections() {
   infoPanel.classList.remove('open');
+  document.getElementById('utilPanel').classList.remove('open');
+  document.getElementById('btnUtil').classList.remove('active');
   dirPanel.classList.add('open');
   document.getElementById('btnDir').classList.add('active');
 }
@@ -1114,6 +1222,7 @@ document.getElementById('pickTo').addEventListener('click', () => armPick('to'))
 
 map.on('click', e => {
   if (!dirState.pick) return;
+  clickConsumedByPick = true;
   const label = e.lngLat.lat.toFixed(4) + ', ' + e.lngLat.lng.toFixed(4);
   const pt = { lat: e.lngLat.lat, lng: e.lngLat.lng, name: 'Pin (' + label + ')' };
   if (dirState.pick === 'from') { dirState.from = pt; dirFromInput.value = pt.name; }
@@ -1262,6 +1371,232 @@ async function routeNow() {
   }
 }
 
+/* =====================================================
+   EXPLORE — tap anywhere on the map to identify the
+   village / town / city under your finger and pull up
+   its full intelligence panel (weather + elevation)
+   ===================================================== */
+let exploreTimer = null;
+map.on('dblclick', () => clearTimeout(exploreTimer)); // double-tap zoom wins
+map.on('movestart', () => clearTimeout(exploreTimer));
+map.on('click', e => {
+  if (clickConsumedByPick) { clickConsumedByPick = false; return; }
+  if (droneActive || performance.now() - lastDroneStop < 600) return; // exit-tap isn't an explore-tap
+  try {
+    // taps on a utility pin are handled by its own popup
+    if (map.getLayer('utils-circ') && map.queryRenderedFeatures(e.point, { layers: ['utils-circ'] }).length) return;
+  } catch (err) { /* layer not ready yet */ }
+  const ll = e.lngLat;
+  clearTimeout(exploreTimer);
+  exploreTimer = setTimeout(() => exploreAt(ll), 280);
+});
+
+async function exploreAt(ll) {
+  ipName.textContent = 'Pinpointing…';
+  ipCoords.textContent = ll.lat.toFixed(4) + '° N · ' + ll.lng.toFixed(4) + '° E';
+  ipBody.innerHTML = '<div class="loading-note"><span class="spin"></span>&nbsp; Identifying this place…</div>';
+  dirPanel.classList.remove('open');
+  document.getElementById('btnDir').classList.remove('active');
+  infoPanel.classList.add('open');
+
+  let name = 'Dropped pin';
+  try {
+    // ask Nominatim at the granularity you're looking at: zoomed close →
+    // village / neighbourhood, zoomed out → district / state
+    const z = Math.round(Math.min(16, Math.max(8, map.getZoom())));
+    const res = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=' + z +
+      '&lat=' + ll.lat + '&lon=' + ll.lng, { headers: { 'Accept': 'application/json' } });
+    const d = await res.json();
+    const a = d.address || {};
+    name = a.village || a.hamlet || a.town || a.neighbourhood || a.suburb || a.city_district ||
+           a.city || a.county || a.state_district || a.state || d.name || 'Dropped pin';
+  } catch (err) { /* reverse offline — still show weather & terrain for the spot */ }
+  document.querySelectorAll('.chip').forEach(x => x.classList.remove('active'));
+  setPlace(name, ll.lat, ll.lng);
+}
+
+/* =====================================================
+   PUBLIC UTILITIES — hospitals, schools, fuel, water…
+   live from OpenStreetMap (Overpass) for the area in view
+   ===================================================== */
+const UTIL_CATS = [
+  { id: 'hospital', label: 'Hospitals', emoji: '🏥', color: '#ff5d5d', sel: ['node["amenity"~"^(hospital|clinic|doctors)$"]', 'way["amenity"~"^(hospital|clinic)$"]'] },
+  { id: 'pharmacy', label: 'Pharmacies', emoji: '💊', color: '#ff8fb3', sel: ['node["amenity"="pharmacy"]'] },
+  { id: 'school',   label: 'Schools',    emoji: '🎓', color: '#5dc1ff', sel: ['node["amenity"~"^(school|college|university)$"]', 'way["amenity"~"^(school|college|university)$"]'] },
+  { id: 'police',   label: 'Police',     emoji: '🚓', color: '#7d8cff', sel: ['node["amenity"="police"]', 'way["amenity"="police"]'] },
+  { id: 'fuel',     label: 'Fuel pumps', emoji: '⛽', color: '#ffc14d', sel: ['node["amenity"="fuel"]', 'way["amenity"="fuel"]'] },
+  { id: 'bank',     label: 'Banks & ATM', emoji: '🏧', color: '#3ddc84', sel: ['node["amenity"~"^(bank|atm)$"]'] },
+  { id: 'rail',     label: 'Rail stations', emoji: '🚉', color: '#d9a7ff', sel: ['node["railway"="station"]'] },
+  { id: 'bus',      label: 'Bus stops',  emoji: '🚌', color: '#ffe066', sel: ['node["highway"="bus_stop"]', 'node["amenity"="bus_station"]'] },
+  { id: 'water',    label: 'Drinking water', emoji: '🚰', color: '#6ab7ff', sel: ['node["amenity"="drinking_water"]'] },
+  { id: 'toilet',   label: 'Toilets',    emoji: '🚻', color: '#9AA0AC', sel: ['node["amenity"="toilets"]'] },
+  { id: 'worship',  label: 'Worship',    emoji: '🛕', color: '#ffaa5e', sel: ['node["amenity"="place_of_worship"]', 'way["amenity"="place_of_worship"]'] },
+  { id: 'post',     label: 'Post offices', emoji: '🏤', color: '#c8b08a', sel: ['node["amenity"="post_office"]'] }
+];
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter'
+];
+const utilPanel = document.getElementById('utilPanel');
+const btnUtil = document.getElementById('btnUtil');
+const utilNote = document.getElementById('utilNote');
+const utilActive = new Set();
+let utilBusy = false;
+
+function openUtils() {
+  infoPanel.classList.remove('open');
+  closeDirections();
+  utilPanel.classList.add('open');
+  btnUtil.classList.add('active');
+}
+function closeUtils() {
+  utilPanel.classList.remove('open');
+  btnUtil.classList.remove('active');
+}
+btnUtil.addEventListener('click', () => {
+  utilPanel.classList.contains('open') ? closeUtils() : openUtils();
+});
+document.getElementById('utilClose').addEventListener('click', closeUtils);
+
+const utilGrid = document.getElementById('utilGrid');
+UTIL_CATS.forEach(cat => {
+  const b = document.createElement('button');
+  b.className = 'uchip';
+  b.innerHTML = '<span class="sw" style="background:' + cat.color + '"></span>' + cat.emoji + ' ' + cat.label;
+  b.addEventListener('click', () => {
+    if (utilActive.has(cat.id)) utilActive.delete(cat.id); else utilActive.add(cat.id);
+    b.classList.toggle('active', utilActive.has(cat.id));
+    loadUtils();
+  });
+  utilGrid.appendChild(b);
+});
+document.getElementById('utilReload').addEventListener('click', loadUtils);
+document.getElementById('utilClear').addEventListener('click', () => {
+  utilActive.clear();
+  utilGrid.querySelectorAll('.uchip').forEach(x => x.classList.remove('active'));
+  setUtilData({ type: 'FeatureCollection', features: [] });
+  utilNote.textContent = 'Cleared. Pick categories to show them again.';
+});
+
+function ensureUtilLayers() {
+  if (map.getSource('utils-src')) return;
+  map.addSource('utils-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({
+    id: 'utils-circ', type: 'circle', source: 'utils-src',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3.5, 14, 6, 17, 9],
+      'circle-color': ['get', 'color'],
+      'circle-stroke-color': '#0B0E14', 'circle-stroke-width': 1.5
+    }
+  });
+  try {
+    map.addLayer({
+      id: 'utils-label', type: 'symbol', source: 'utils-src', minzoom: 14,
+      layout: {
+        'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'],
+        'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top',
+        'text-optional': true
+      },
+      paint: { 'text-color': '#ECE7DC', 'text-halo-color': '#0B0E14', 'text-halo-width': 1.4 }
+    });
+  } catch (e) { console.warn('util labels skipped', e); }
+
+  map.on('click', 'utils-circ', e => {
+    const f = e.features && e.features[0];
+    if (!f) return;
+    const p = f.properties;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = '<div class="pop-name">' + p.emoji + ' ' + escapeHtml(p.name) + '</div>' +
+      '<div class="pop-cat">' + escapeHtml(p.label) + '</div>';
+    const go = document.createElement('button');
+    go.className = 'pop-btn';
+    go.textContent = '→ Directions here';
+    const lng = f.geometry.coordinates[0], lat = f.geometry.coordinates[1];
+    const pop = new maplibregl.Popup({ offset: 10 }).setLngLat(f.geometry.coordinates).setDOMContent(wrap).addTo(map);
+    go.addEventListener('click', () => {
+      pop.remove();
+      openDirections();
+      dirState.to = { lat: lat, lng: lng, name: p.name };
+      dirToInput.value = p.name;
+      toast('Destination set — add a starting point');
+    });
+    wrap.appendChild(go);
+  });
+  map.on('mouseenter', 'utils-circ', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'utils-circ', () => { map.getCanvas().style.cursor = ''; });
+}
+
+function setUtilData(fc) {
+  ensureUtilLayers();
+  map.getSource('utils-src').setData(fc);
+}
+
+async function loadUtils() {
+  if (!utilActive.size) {
+    if (map.getSource('utils-src')) setUtilData({ type: 'FeatureCollection', features: [] });
+    return;
+  }
+  if (map.getZoom() < 11) {
+    utilNote.textContent = 'Zoom in closer (a city or village) and tap ↻ — loading utilities for half a state would be a lot of pins.';
+    return;
+  }
+  if (utilBusy) return;
+  utilBusy = true;
+  utilNote.innerHTML = '<span class="spin"></span>&nbsp; Asking OpenStreetMap…';
+
+  const b = map.getBounds();
+  const bbox = '(' + b.getSouth().toFixed(4) + ',' + b.getWest().toFixed(4) + ',' + b.getNorth().toFixed(4) + ',' + b.getEast().toFixed(4) + ')';
+  const cats = UTIL_CATS.filter(c => utilActive.has(c.id));
+  const body = '[out:json][timeout:25];(' +
+    cats.map(c => c.sel.map(s => s + bbox + ';').join('')).join('') +
+    ');out center 350;';
+
+  let data = null;
+  for (const ep of OVERPASS_ENDPOINTS) {
+    try {
+      const res = await fetch(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(body)
+      });
+      if (!res.ok) throw new Error('overpass http ' + res.status);
+      data = await res.json();
+      break;
+    } catch (e) { console.warn('overpass endpoint failed', ep, e); }
+  }
+  utilBusy = false;
+  if (!data) {
+    utilNote.textContent = 'The free OpenStreetMap data server is busy — try ↻ again in a few seconds.';
+    return;
+  }
+
+  const features = [];
+  (data.elements || []).forEach(el => {
+    const lat = el.lat !== undefined ? el.lat : (el.center && el.center.lat);
+    const lon = el.lon !== undefined ? el.lon : (el.center && el.center.lon);
+    if (lat === undefined || lon === undefined) return;
+    const tags = el.tags || {};
+    const cat = cats.find(c =>
+      c.sel.some(s => {
+        const m = s.match(/\["(\w+)"[=~]"\^?\(?([^)"$]+)/);
+        return m && tags[m[1]] && m[2].split('|').indexOf(tags[m[1]]) !== -1;
+      })
+    ) || cats[0];
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lon, lat] },
+      properties: {
+        name: tags.name || tags['name:en'] || cat.label.replace(/s$/, ''),
+        label: cat.label, emoji: cat.emoji, color: cat.color
+      }
+    });
+  });
+  setUtilData({ type: 'FeatureCollection', features: features });
+  utilNote.textContent = features.length
+    ? features.length + ' places pinned in this view. Pan or zoom, then ↻ to refresh.'
+    : 'Nothing mapped here yet for those categories — OSM coverage varies village to village.';
+}
+
 /* ---------- Controls ---------- */
 const btnSat = document.getElementById('btnSat');
 btnSat.addEventListener('click', () => {
@@ -1273,7 +1608,17 @@ btnSat.addEventListener('click', () => {
   if (map.getLayer('hillshade')) {
     map.setLayoutProperty('hillshade', 'visibility', satOn ? 'none' : 'visible');
   }
+  updateRoadVisibility();
   toast(satOn ? 'Satellite imagery on' : 'Street map');
+});
+
+const btnRoads = document.getElementById('btnRoads');
+btnRoads.addEventListener('click', () => {
+  if (!satOn) { toast('Street mode already shows every road'); return; }
+  roadsOn = !roadsOn;
+  btnRoads.classList.toggle('active', roadsOn);
+  updateRoadVisibility();
+  toast(roadsOn ? 'Road network on' : 'Road network off');
 });
 
 const btn3d = document.getElementById('btn3d');
