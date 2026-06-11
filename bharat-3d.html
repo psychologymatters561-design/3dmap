@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>भारत · BHARAT 3D — Explore Every Corner of India</title>
+<meta name="description" content="A free 3D exploration tool for India. Real terrain, 3D buildings, and search for any city, town, or village.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- MapLibre loaded by multi-CDN fallback loader at bottom of page -->
+
+<style>
+:root{
+  --ink:#0B0E14;
+  --panel:rgba(11,14,20,.84);
+  --hairline:rgba(255,255,255,.09);
+  --text:#ECE7DC;
+  --text-dim:#9AA0AC;
+  --saffron:#FF7A1A;
+  --saffron-soft:rgba(255,122,26,.16);
+  --radius:14px;
+  --shadow:0 8px 30px rgba(0,0,0,.45);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--ink)}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--text)}
+#map{position:fixed;inset:0}
+
+/* ---------- Wordmark ---------- */
+.wordmark{
+  position:fixed;top:14px;left:14px;z-index:20;
+  background:var(--panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--hairline);border-radius:var(--radius);
+  padding:10px 16px;box-shadow:var(--shadow);
+  user-select:none;line-height:1.1;
+}
+.wordmark .deva{font-family:'Fraunces',serif;font-weight:700;font-size:20px;letter-spacing:.5px}
+.wordmark .deva::after{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--saffron);margin-left:8px;vertical-align:middle}
+.wordmark .sub{font-size:10px;letter-spacing:2.5px;color:var(--text-dim);text-transform:uppercase;margin-top:3px}
+
+/* ---------- Search ---------- */
+.search-wrap{
+  position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:30;
+  width:min(520px,calc(100vw - 200px));
+}
+.search-box{
+  display:flex;align-items:center;gap:10px;
+  background:var(--panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--hairline);border-radius:var(--radius);
+  padding:0 14px;box-shadow:var(--shadow);
+  transition:border-color .2s;
+}
+.search-box:focus-within{border-color:var(--saffron)}
+.search-box svg{flex:none;opacity:.55}
+.search-box input{
+  flex:1;background:none;border:none;outline:none;color:var(--text);
+  font:500 14px 'IBM Plex Sans',sans-serif;padding:12px 0;min-width:0;
+}
+.search-box input::placeholder{color:var(--text-dim)}
+.search-hint{flex:none;font:400 10px 'IBM Plex Mono',monospace;color:var(--text-dim);border:1px solid var(--hairline);border-radius:5px;padding:2px 6px}
+.results{
+  margin-top:6px;background:var(--panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--hairline);border-radius:var(--radius);overflow:hidden;
+  box-shadow:var(--shadow);display:none;
+}
+.results.open{display:block}
+.result{
+  width:100%;text-align:left;background:none;border:none;cursor:pointer;
+  padding:11px 14px;color:var(--text);font:500 13px 'IBM Plex Sans',sans-serif;
+  border-bottom:1px solid var(--hairline);
+}
+.result:last-child{border-bottom:none}
+.result:hover,.result:focus-visible{background:var(--saffron-soft);outline:none}
+.result .type{display:block;font:400 10px 'IBM Plex Mono',monospace;color:var(--text-dim);margin-top:2px;text-transform:uppercase;letter-spacing:1px}
+.result.note{cursor:default;color:var(--text-dim)}
+.result.note:hover{background:none}
+
+/* ---------- Control rail ---------- */
+.rail{
+  position:fixed;top:14px;right:14px;z-index:20;
+  display:flex;flex-direction:column;gap:8px;
+}
+.ctl{
+  width:42px;height:42px;border-radius:12px;cursor:pointer;
+  background:var(--panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--hairline);box-shadow:var(--shadow);
+  color:var(--text);display:flex;align-items:center;justify-content:center;
+  font:600 11px 'IBM Plex Mono',monospace;
+  transition:border-color .2s,color .2s;
+}
+.ctl:hover{border-color:rgba(255,255,255,.25)}
+.ctl:focus-visible{outline:2px solid var(--saffron);outline-offset:2px}
+.ctl.active{border-color:var(--saffron);color:var(--saffron)}
+.ctl svg{width:18px;height:18px}
+
+/* ---------- City chips ---------- */
+.cities{
+  position:fixed;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom));z-index:20;
+  display:flex;gap:8px;overflow-x:auto;padding:6px 14px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}
+.cities::-webkit-scrollbar{display:none}
+.chip{
+  flex:none;cursor:pointer;
+  background:var(--panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--hairline);border-radius:999px;
+  padding:9px 16px;color:var(--text);font:500 13px 'IBM Plex Sans',sans-serif;
+  box-shadow:var(--shadow);transition:border-color .2s,color .2s;white-space:nowrap;
+}
+.chip:hover{border-color:rgba(255,255,255,.25)}
+.chip:focus-visible{outline:2px solid var(--saffron);outline-offset:2px}
+.chip.active{border-color:var(--saffron);color:var(--saffron)}
+
+/* ---------- HUD ---------- */
+.hud{
+  position:fixed;left:14px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:20;
+  background:var(--panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--hairline);border-radius:10px;
+  padding:8px 12px;box-shadow:var(--shadow);
+  font:500 11px 'IBM Plex Mono',monospace;color:var(--text-dim);
+  display:flex;gap:14px;user-select:none;
+}
+.hud b{color:var(--text);font-weight:500}
+.hud .lbl{color:var(--saffron);margin-right:5px}
+
+/* ---------- Toast ---------- */
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(120px + env(safe-area-inset-bottom));z-index:40;
+  background:var(--panel);border:1px solid var(--hairline);border-radius:10px;
+  padding:10px 16px;font:500 13px 'IBM Plex Sans',sans-serif;box-shadow:var(--shadow);
+  opacity:0;pointer-events:none;transition:opacity .3s;
+}
+.toast.show{opacity:1}
+
+.maplibregl-ctrl-attrib{background:rgba(11,14,20,.6)!important;color:var(--text-dim)!important;font-size:10px!important}
+.maplibregl-ctrl-attrib a{color:var(--text-dim)!important}
+
+@media (max-width:640px){
+  .search-wrap{top:72px;left:14px;right:14px;transform:none;width:auto}
+  .search-hint{display:none}
+  .hud{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="wordmark" aria-hidden="true">
+  <div class="deva">भारत</div>
+  <div class="sub">Bharat 3D · Exploration</div>
+</div>
+
+<div class="search-wrap">
+  <div class="search-box">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input id="search" type="text" placeholder="Search any city, town, or village in India…" autocomplete="off" aria-label="Search locations in India">
+    <span class="search-hint">ENTER</span>
+  </div>
+  <div class="results" id="results" role="listbox"></div>
+</div>
+
+<div class="rail">
+  <button class="ctl active" id="btn3d" title="Toggle 3D tilt" aria-label="Toggle 3D tilt">3D</button>
+  <button class="ctl active" id="btnTerrain" title="Toggle terrain" aria-label="Toggle terrain elevation">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20L9 8l4 7 3-4 5 9H3z"/></svg>
+  </button>
+  <button class="ctl" id="btnNorth" title="Reset north" aria-label="Reset bearing to north">N</button>
+  <button class="ctl" id="btnLocate" title="My location" aria-label="Fly to my location">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  </button>
+</div>
+
+<div class="cities" id="cities" role="toolbar" aria-label="Quick jump to major cities"></div>
+
+<div class="hud" id="hud">
+  <span><span class="lbl">LAT</span><b id="hLat">21.500</b></span>
+  <span><span class="lbl">LNG</span><b id="hLng">78.960</b></span>
+  <span><span class="lbl">Z</span><b id="hZ">4.3</b></span>
+  <span><span class="lbl">PITCH</span><b id="hP">0°</b></span>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+/* ---------- On-screen error reporter (no DevTools needed) ---------- */
+window.addEventListener('error', function (e) {
+  try {
+    var box = document.getElementById('errbox');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'errbox';
+      box.style.cssText = 'position:fixed;left:10px;right:10px;bottom:10px;z-index:9999;background:#2a0f0f;color:#ffd7d7;border:1px solid #a33;border-radius:10px;padding:10px 36px 10px 12px;font:12px monospace;max-height:30vh;overflow:auto;word-break:break-word';
+      var x = document.createElement('button');
+      x.textContent = '✕';
+      x.style.cssText = 'position:absolute;top:6px;right:8px;background:none;border:none;color:#ffd7d7;font-size:14px;cursor:pointer';
+      x.onclick = function () { box.remove(); };
+      box.appendChild(x);
+      document.body.appendChild(box);
+    }
+    var line = document.createElement('div');
+    line.textContent = '› ' + (e.message || 'unknown error') + (e.filename ? '  [' + e.filename.split('/').pop() + ':' + e.lineno + ']' : '');
+    box.appendChild(line);
+  } catch (ignore) {}
+});
+
+
+/* ---------- Multi-CDN loader: jsDelivr -> unpkg -> cdnjs ---------- */
+var MAPLIBRE_CDNS = [
+  'https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl',
+  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl',
+  'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl'
+];
+function loadMapLibre(i) {
+  if (i >= MAPLIBRE_CDNS.length) {
+    document.body.insertAdjacentHTML('beforeend',
+      '<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:99;background:#0B0E14;color:#ECE7DC;font-family:sans-serif;text-align:center;padding:24px">' +
+      '<div><div style="font-size:18px;margin-bottom:8px">Map engine could not load</div>' +
+      '<div style="color:#9AA0AC;font-size:14px">Check your internet connection, then reload the page.</div></div></div>');
+    return;
+  }
+  var base = MAPLIBRE_CDNS[i];
+  var css = document.createElement('link');
+  css.rel = 'stylesheet'; css.href = base + '.css';
+  document.head.appendChild(css);
+  var s = document.createElement('script');
+  s.src = base + '.js';
+  s.onload = function () {
+    if (window.maplibregl) { initApp(); }
+    else { loadMapLibre(i + 1); }
+  };
+  s.onerror = function () { loadMapLibre(i + 1); };
+  document.head.appendChild(s);
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function () { loadMapLibre(0); });
+} else {
+  loadMapLibre(0);
+}
+
+function initApp() {
+
+/* ---------- Sandbox detection: MapLibre needs Web Workers ---------- */
+try {
+  var probe = new Worker(URL.createObjectURL(new Blob([''], { type: 'text/javascript' })));
+  probe.terminate();
+} catch (workerErr) {
+  document.body.insertAdjacentHTML('beforeend',
+    '<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:99;background:#0B0E14;color:#ECE7DC;font-family:sans-serif;text-align:center;padding:24px;line-height:1.6">' +
+    '<div style="max-width:420px"><div style="font-family:serif;font-size:28px;margin-bottom:10px">भारत <span style="color:#FF7A1A">●</span></div>' +
+    '<div style="font-size:16px;margin-bottom:10px">This preview sandbox blocks the map engine.</div>' +
+    '<div style="color:#9AA0AC;font-size:14px">Deploy this file to GitHub Pages and open the live URL — it will work there. Preview panes (Claude, code editors) block the Web Workers that 3D maps require.</div></div></div>');
+  return;
+}
+
+
+/* =====================================================
+   BHARAT 3D — single-file India exploration tool
+   Tiles: OpenFreeMap (keyless) · Terrain: AWS Terrarium DEM
+   Search: Nominatim (OSM) · Renderer: MapLibre GL JS
+   ===================================================== */
+
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const INDIA_CENTER = [78.96, 21.5];
+const INDIA_BOUNDS = [[55, 2], [105, 40]]; // loose box: keeps you in the neighbourhood
+
+let map;
+try {
+map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center: INDIA_CENTER,
+  zoom: 4.2,
+  pitch: 0,
+  bearing: 0,
+  maxBounds: INDIA_BOUNDS,
+  maxPitch: 75,
+  attributionControl: { compact: true },
+  antialias: true
+});
+
+} catch (err) {
+  throw new Error('Map init failed: ' + err.message);
+}
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+try { map.touchPitch.enable(); } catch (e) { /* not critical */ }
+
+/* ---------- Terrain + hillshade + sky + buildings ---------- */
+let terrainOn = true;
+
+map.on('load', () => {
+  // Real elevation: AWS open terrain tiles (terrarium encoding, no key)
+  map.addSource('dem', {
+    type: 'raster-dem',
+    encoding: 'terrarium',
+    tiles: ['https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png'],
+    tileSize: 256,
+    maxzoom: 14
+  });
+  map.setTerrain({ source: 'dem', exaggeration: 1.35 });
+
+  // Hillshade gives the Himalaya / Ghats their drama even when zoomed out
+  try {
+    const fsLayer = map.getStyle().layers.find(function(l){ return l.type === 'symbol'; }); const firstSymbol = fsLayer ? fsLayer.id : undefined;
+    map.addLayer({
+      id: 'hillshade', type: 'hillshade', source: 'dem',
+      paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#0B0E14' }
+    }, firstSymbol);
+  } catch (e) { console.warn('hillshade skipped', e); }
+
+  // Atmosphere
+  try {
+    map.setSky({
+      'sky-color': '#10131c',
+      'horizon-color': '#2a2417',
+      'fog-color': '#0B0E14',
+      'sky-horizon-blend': 0.6,
+      'horizon-fog-blend': 0.6
+    });
+  } catch (e) { /* older maplibre: fine without sky */ }
+
+  // 3D buildings — only add our own if the style doesn't already extrude
+  try {
+    const style = map.getStyle();
+    const hasExtrusion = style.layers.some(l => l.type === 'fill-extrusion');
+    if (!hasExtrusion) {
+      const vecSrc = Object.keys(style.sources).find(k => style.sources[k].type === 'vector');
+      const fsLayer2 = style.layers.find(function(l){ return l.type === 'symbol'; }); const firstSymbol = fsLayer2 ? fsLayer2.id : undefined;
+      if (vecSrc) {
+        map.addLayer({
+          id: 'bharat-3d-buildings',
+          source: vecSrc,
+          'source-layer': 'building',
+          type: 'fill-extrusion',
+          minzoom: 14.5,
+          paint: {
+            'fill-extrusion-color': [
+              'interpolate', ['linear'],
+              ['coalesce', ['get', 'render_height'], 8],
+              0, '#2e3340', 60, '#4a4336', 150, '#6b5226'
+            ],
+            'fill-extrusion-height': [
+              'interpolate', ['linear'], ['zoom'],
+              14.5, 0, 16, ['coalesce', ['get', 'render_height'], 8]
+            ],
+            'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+            'fill-extrusion-opacity': 0.88
+          }
+        }, firstSymbol);
+      }
+    }
+  } catch (e) { console.warn('buildings skipped', e); }
+
+  // Gentle opening move
+  if (!REDUCED) {
+    map.easeTo({ pitch: 35, zoom: 4.5, duration: 2400, essential: false });
+  }
+});
+
+/* ---------- Camera helper ---------- */
+function flyTo(lng, lat, zoom = 14.5, pitch = 55, bearing = -15) {
+  const opts = { center: [lng, lat], zoom, pitch, bearing };
+  if (REDUCED) { map.jumpTo(opts); }
+  else { map.flyTo({ ...opts, duration: 3200, curve: 1.6, essential: true }); }
+}
+
+/* ---------- City quick-jumps ---------- */
+const CITIES = [
+  { n: 'Delhi',      c: [77.2090, 28.6139], z: 13.8 },
+  { n: 'Mumbai',     c: [72.8777, 19.0760], z: 13.8 },
+  { n: 'Bengaluru',  c: [77.5946, 12.9716], z: 13.8 },
+  { n: 'Kolkata',    c: [88.3639, 22.5726], z: 13.8 },
+  { n: 'Chennai',    c: [80.2707, 13.0827], z: 13.8 },
+  { n: 'Hyderabad',  c: [78.4867, 17.3850], z: 13.8 },
+  { n: 'Jaipur',     c: [75.7873, 26.9124], z: 14 },
+  { n: 'Varanasi',   c: [83.0095, 25.3109], z: 14.5 },
+  { n: 'Amritsar',   c: [74.8765, 31.6200], z: 15 },
+  { n: 'Leh',        c: [77.5771, 34.1526], z: 12.5, p: 70 },
+  { n: 'Goa',        c: [73.8278, 15.4989], z: 12.5 },
+  { n: 'Shillong',   c: [91.8933, 25.5788], z: 13, p: 65 },
+  { n: 'Jewar ✈',    c: [77.6014, 28.1664], z: 13 }
+];
+
+const citiesEl = document.getElementById('cities');
+CITIES.forEach(city => {
+  const b = document.createElement('button');
+  b.className = 'chip';
+  b.textContent = city.n;
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    flyTo(city.c[0], city.c[1], city.z, (city.p !== undefined ? city.p : 55));
+  });
+  citiesEl.appendChild(b);
+});
+
+/* ---------- Search: Nominatim (any village in India) ---------- */
+const input = document.getElementById('search');
+const resultsEl = document.getElementById('results');
+let debounce, lastQuery = '';
+
+input.addEventListener('input', () => {
+  clearTimeout(debounce);
+  const q = input.value.trim();
+  if (q.length < 3) { closeResults(); return; }
+  debounce = setTimeout(() => geocode(q), 450); // polite to Nominatim
+});
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { clearTimeout(debounce); geocode(input.value.trim()); }
+  if (e.key === 'Escape') closeResults();
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) closeResults();
+});
+
+async function geocode(q) {
+  if (!q || q === lastQuery) return;
+  lastQuery = q;
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=in&limit=6&q=' + encodeURIComponent(q);
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    const data = await res.json();
+    renderResults(data);
+  } catch (err) {
+    renderResults(null);
+  }
+}
+
+function renderResults(data) {
+  resultsEl.innerHTML = '';
+  if (!data) {
+    resultsEl.innerHTML = '<div class="result note">Search unavailable — check connection.</div>';
+  } else if (!data.length) {
+    resultsEl.innerHTML = '<div class="result note">No match in India. Try adding the district or state.</div>';
+  } else {
+    data.forEach(r => {
+      const b = document.createElement('button');
+      b.className = 'result';
+      b.setAttribute('role', 'option');
+      const name = r.display_name.split(',').slice(0, 3).join(',');
+      b.innerHTML = escapeHtml(name) + '<span class="type">' + escapeHtml(r.type || r.class || 'place') + '</span>';
+      b.addEventListener('click', () => {
+        closeResults();
+        input.value = name;
+        const zoomFor = { city: 13.5, town: 14.5, village: 15.5, hamlet: 16, suburb: 15, neighbourhood: 15.5 };
+        flyTo(+r.lon, +r.lat, (zoomFor[r.type] !== undefined ? zoomFor[r.type] : 14.5));
+        document.querySelectorAll('.chip').forEach(x => x.classList.remove('active'));
+      });
+      resultsEl.appendChild(b);
+    });
+  }
+  resultsEl.classList.add('open');
+}
+function closeResults() { resultsEl.classList.remove('open'); lastQuery = ''; }
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+/* ---------- Controls ---------- */
+const btn3d = document.getElementById('btn3d');
+btn3d.addEventListener('click', () => {
+  const flat = map.getPitch() > 5;
+  btn3d.classList.toggle('active', !flat);
+  if (REDUCED) map.jumpTo({ pitch: flat ? 0 : 55 });
+  else map.easeTo({ pitch: flat ? 0 : 55, duration: 900 });
+});
+
+const btnTerrain = document.getElementById('btnTerrain');
+btnTerrain.addEventListener('click', () => {
+  terrainOn = !terrainOn;
+  btnTerrain.classList.toggle('active', terrainOn);
+  map.setTerrain(terrainOn ? { source: 'dem', exaggeration: 1.35 } : null);
+  toast(terrainOn ? 'Terrain on' : 'Terrain off');
+});
+
+document.getElementById('btnNorth').addEventListener('click', () => {
+  if (REDUCED) map.jumpTo({ bearing: 0 });
+  else map.easeTo({ bearing: 0, duration: 700 });
+});
+
+document.getElementById('btnLocate').addEventListener('click', () => {
+  if (!navigator.geolocation) { toast('Geolocation not supported'); return; }
+  toast('Locating…');
+  navigator.geolocation.getCurrentPosition(
+    pos => flyTo(pos.coords.longitude, pos.coords.latitude, 15, 55),
+    () => toast('Location permission denied'),
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+});
+
+/* ---------- HUD ---------- */
+const hLat = document.getElementById('hLat'), hLng = document.getElementById('hLng'),
+      hZ = document.getElementById('hZ'), hP = document.getElementById('hP');
+map.on('move', () => {
+  const c = map.getCenter();
+  hLat.textContent = c.lat.toFixed(3);
+  hLng.textContent = c.lng.toFixed(3);
+  hZ.textContent = map.getZoom().toFixed(1);
+  hP.textContent = Math.round(map.getPitch()) + '°';
+});
+
+/* ---------- Toast ---------- */
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+} /* end initApp */
+</script>
+</body>
+</html>
