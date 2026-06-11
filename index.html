@@ -443,7 +443,12 @@ map = new maplibregl.Map({
   maxBounds: INDIA_BOUNDS,
   maxPitch: 85,
   attributionControl: { compact: true },
-  antialias: true
+  // Smoothness over raw pixels: MSAA off, retina capped at 2x, no label
+  // fade-in re-renders, and a big tile cache so camera moves replay from memory
+  antialias: false,
+  pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+  fadeDuration: 0,
+  maxTileCacheSize: 2048
 });
 
 } catch (err) {
@@ -478,7 +483,9 @@ map.on('load', () => {
   try {
     map.addLayer({
       id: 'hillshade', type: 'hillshade', source: 'dem',
-      paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#0B0E14' }
+      paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#0B0E14' },
+      // satellite covers it by default — skip the render pass until needed
+      layout: { visibility: satOn ? 'none' : 'visible' }
     }, firstSymbolId());
   } catch (e) { console.warn('hillshade skipped', e); }
 
@@ -494,7 +501,7 @@ map.on('load', () => {
     });
     map.addLayer({
       id: 'sat-layer', type: 'raster', source: 'sat',
-      paint: { 'raster-fade-duration': 300, 'raster-saturation': 0.12, 'raster-contrast': 0.06 },
+      paint: { 'raster-fade-duration': 0, 'raster-saturation': 0.12, 'raster-contrast': 0.06 },
       layout: { visibility: 'visible' }
     }, firstSymbolId());
   } catch (e) { console.warn('satellite skipped', e); }
@@ -837,12 +844,13 @@ function renderPlaceInfo(p, wx, elev) {
    ===================================================== */
 const fxCanvas = document.getElementById('fx');
 const fxCtx = fxCanvas.getContext('2d');
+const FX_DPR = Math.min(window.devicePixelRatio || 1, 1.5); // overlay never needs retina
 let fx = { wind: 0, windFrom: 0, rain: 0, on: true };
 let fxParticles = [], fxDrops = [], fxRAF = null;
 
 function fxResize() {
-  fxCanvas.width = window.innerWidth * (window.devicePixelRatio || 1);
-  fxCanvas.height = window.innerHeight * (window.devicePixelRatio || 1);
+  fxCanvas.width = window.innerWidth * FX_DPR;
+  fxCanvas.height = window.innerHeight * FX_DPR;
   fxCanvas.style.width = window.innerWidth + 'px';
   fxCanvas.style.height = window.innerHeight + 'px';
 }
@@ -859,12 +867,12 @@ function fxSet(opts) {
 
 function fxSeed() {
   const W = fxCanvas.width, H = fxCanvas.height;
-  const windCount = (fx.wind > 3) ? Math.min(160, 40 + Math.round(fx.wind * 3)) : 0;
+  const windCount = (fx.wind > 3) ? Math.min(110, 30 + Math.round(fx.wind * 2.5)) : 0;
   fxParticles = [];
   for (let i = 0; i < windCount; i++) {
     fxParticles.push({ x: Math.random() * W, y: Math.random() * H, life: Math.random() });
   }
-  const dropCount = fx.rain > 0 ? Math.round(120 + fx.rain * 280) : 0;
+  const dropCount = fx.rain > 0 ? Math.round(90 + fx.rain * 200) : 0;
   fxDrops = [];
   for (let i = 0; i < dropCount; i++) {
     fxDrops.push({ x: Math.random() * W, y: Math.random() * H, v: 0.6 + Math.random() * 0.8 });
@@ -872,14 +880,15 @@ function fxSeed() {
 }
 
 function fxLoopState() {
-  const need = fx.on && !REDUCED && (fxParticles.length || fxDrops.length);
+  // droneActive: the camera gets the whole frame budget while filming
+  const need = fx.on && !REDUCED && !droneActive && (fxParticles.length || fxDrops.length);
   if (need && !fxRAF) fxRAF = requestAnimationFrame(fxFrame);
   if (!need && fxRAF) { cancelAnimationFrame(fxRAF); fxRAF = null; fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height); }
 }
 
 function fxFrame() {
   fxRAF = null;
-  const W = fxCanvas.width, H = fxCanvas.height, dpr = window.devicePixelRatio || 1;
+  const W = fxCanvas.width, H = fxCanvas.height, dpr = FX_DPR;
   fxCtx.clearRect(0, 0, W, H);
 
   // direction the wind blows TOWARD, rotated with the map bearing → screen angle
@@ -938,90 +947,115 @@ btnFx.addEventListener('click', () => {
    DRONE VIEW — cinematic orbit flight over a location
    ===================================================== */
 let droneRAF = null;
+let droneActive = false;
+let dronePrevPixelRatio = null;
 
 function startDrone(target) {
+  if (droneActive) return;
   const t = target || place || { name: 'India', lat: map.getCenter().lat, lng: map.getCenter().lng };
+  droneActive = true;
   document.body.classList.add('cine');
-  document.getElementById('cineTitle').textContent = t.name || '';
   closeResults();
+  fxLoopState(); // pause weather particles — the camera gets the whole frame budget
 
-  const startCam = {
-    center: map.getCenter(), zoom: map.getZoom(),
-    pitch: map.getPitch(), bearing: map.getBearing()
-  };
-  const DUR = 55000; // 55 s full flight
-  const t0 = performance.now();
-  const baseZoom = 15.6, baseBearing = startCam.bearing;
-  const ease = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
-
-  function frame(now) {
-    const u = Math.min(1, (now - t0) / DUR);
-
-    let center, zoom, pitch, bearing;
-    if (u < 0.12) {
-      // Phase 1 — approach: glide from wherever we are down to the subject
-      const k = ease(u / 0.12);
-      center = [
-        startCam.center.lng + (t.lng - startCam.center.lng) * k,
-        startCam.center.lat + (t.lat - startCam.center.lat) * k
-      ];
-      zoom = startCam.zoom + (baseZoom - startCam.zoom) * k;
-      pitch = startCam.pitch + (62 - startCam.pitch) * k;
-      bearing = baseBearing + 20 * k;
-    } else if (u < 0.88) {
-      // Phase 2 — slow 360° orbit with breathing zoom & pitch
-      const k = (u - 0.12) / 0.76;
-      const wob = Math.sin(k * Math.PI * 2);
-      center = [t.lng, t.lat];
-      bearing = baseBearing + 20 + k * 360;
-      pitch = 62 + wob * 8;             // 54…70
-      zoom = baseZoom + Math.sin(k * Math.PI * 3) * 0.55;
-    } else {
-      // Phase 3 — the reveal: pull up and back for the wide shot
-      const k = ease((u - 0.88) / 0.12);
-      center = [t.lng, t.lat];
-      bearing = baseBearing + 380 + k * 25;
-      pitch = 62 - k * 24;
-      zoom = baseZoom - k * 3.2;
+  // Film at a capped resolution: steady frame pacing reads smoother than pixels
+  try {
+    if (map.getPixelRatio && map.setPixelRatio) {
+      dronePrevPixelRatio = map.getPixelRatio();
+      map.setPixelRatio(Math.min(dronePrevPixelRatio, 1.25));
     }
+  } catch (e) { dronePrevPixelRatio = null; }
 
-    map.jumpTo({ center: center, zoom: zoom, pitch: pitch, bearing: bearing });
+  const ORBIT_ZOOM = 15.1, ORBIT_PITCH = 62;
+  const cineTitle = document.getElementById('cineTitle');
 
+  if (REDUCED) {
+    // Respect reduced motion: a static high shot instead of the flight
+    cineTitle.textContent = t.name || '';
+    map.jumpTo({ center: [t.lng, t.lat], zoom: ORBIT_ZOOM, pitch: 60, bearing: 30 });
+    return;
+  }
+
+  // Phase 0 — glide to the start mark, then HOLD until every tile in view has
+  // loaded ('idle'). Starting the orbit on a warm cache is what kills stutter.
+  cineTitle.textContent = 'Establishing uplink…';
+  const startBearing = map.getBearing();
+  map.flyTo({ center: [t.lng, t.lat], zoom: ORBIT_ZOOM, pitch: ORBIT_PITCH, bearing: startBearing, duration: 2800, essential: true });
+
+  let started = false;
+  function begin() {
+    if (started || !droneActive) { map.off('idle', begin); return; }
+    started = true;
+    map.off('idle', begin);
+    cineTitle.textContent = t.name || '';
     try {
       const el = map.queryTerrainElevation([t.lng, t.lat]);
       document.getElementById('cineAlt').textContent =
         (el !== null && el !== undefined ? Math.round(el) + ' M ASL' : '—');
     } catch (e) { /* terrain may be off */ }
+    orbit();
+  }
+  map.on('idle', begin);
+  setTimeout(begin, 7000); // slow network failsafe — roll anyway
 
-    if (u < 1 && droneRAF !== null) {
-      droneRAF = requestAnimationFrame(frame);
-    } else if (u >= 1) {
-      stopDrone();
+  function orbit() {
+    const DUR = 50000;
+    const t0 = performance.now();
+    const ease = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+
+    function frame(now) {
+      if (!droneActive) return;
+      const u = Math.min(1, (now - t0) / DUR);
+
+      let zoom, pitch, bearing;
+      if (u < 0.9) {
+        // One slow, constant-speed revolution. Zoom stays LOCKED so the
+        // renderer never swaps tile detail mid-shot; pitch breathes gently
+        // and the second half of the circle replays tiles already cached.
+        const k = u / 0.9;
+        bearing = startBearing + k * 360;
+        pitch = ORBIT_PITCH + Math.sin(k * Math.PI * 2) * 4;
+        zoom = ORBIT_ZOOM;
+      } else {
+        // The reveal — pull up and away. Zooming OUT only ever needs
+        // lower-detail tiles, which are already in memory from the approach.
+        const k = ease((u - 0.9) / 0.1);
+        bearing = startBearing + 360 + k * 18;
+        pitch = ORBIT_PITCH - k * 22;
+        zoom = ORBIT_ZOOM - k * 2.2;
+      }
+
+      map.jumpTo({ center: [t.lng, t.lat], zoom: zoom, pitch: pitch, bearing: bearing });
+
+      if (u < 1) { droneRAF = requestAnimationFrame(frame); }
+      else { stopDrone(); }
     }
+    droneRAF = requestAnimationFrame(frame);
   }
-
-  if (REDUCED) {
-    // Respect reduced motion: a static high shot instead of the flight
-    map.jumpTo({ center: [t.lng, t.lat], zoom: baseZoom, pitch: 60, bearing: 30 });
-    return;
-  }
-  droneRAF = requestAnimationFrame(frame);
 }
 
 function stopDrone() {
+  if (!droneActive) return;
+  droneActive = false;
   if (droneRAF !== null) { cancelAnimationFrame(droneRAF); droneRAF = null; }
+  try { map.stop(); } catch (e) { /* nothing in flight */ }
+  try {
+    if (dronePrevPixelRatio !== null && map.setPixelRatio) map.setPixelRatio(dronePrevPixelRatio);
+  } catch (e) { /* keep current ratio */ }
+  dronePrevPixelRatio = null;
   document.body.classList.remove('cine');
+  fxLoopState(); // resume weather particles
 }
 
 document.getElementById('btnDrone').addEventListener('click', () => {
-  if (document.body.classList.contains('cine')) { stopDrone(); return; }
+  if (droneActive) { stopDrone(); return; }
   if (!place) { toast('Search a place first — then launch the drone'); return; }
   startDrone(place);
 });
 document.getElementById('cineExit').addEventListener('click', stopDrone);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') stopDrone(); });
-map.on('mousedown', () => { if (droneRAF !== null) stopDrone(); });
-map.on('touchstart', () => { if (droneRAF !== null) stopDrone(); });
+map.on('mousedown', () => { if (droneActive && !REDUCED) stopDrone(); });
+map.on('touchstart', () => { if (droneActive && !REDUCED) stopDrone(); });
 
 /* =====================================================
    DIRECTIONS — Nominatim geocoding + OSRM routing,
@@ -1236,6 +1270,9 @@ btnSat.addEventListener('click', () => {
   if (map.getLayer('sat-layer')) {
     map.setLayoutProperty('sat-layer', 'visibility', satOn ? 'visible' : 'none');
   }
+  if (map.getLayer('hillshade')) {
+    map.setLayoutProperty('hillshade', 'visibility', satOn ? 'none' : 'visible');
+  }
   toast(satOn ? 'Satellite imagery on' : 'Street map');
 });
 
@@ -1274,7 +1311,11 @@ document.getElementById('btnLocate').addEventListener('click', () => {
 const hLat = document.getElementById('hLat'), hLng = document.getElementById('hLng'),
       hZ = document.getElementById('hZ'), hP = document.getElementById('hP'),
       hE = document.getElementById('hE');
+let hudLast = 0;
 map.on('move', () => {
+  const now = performance.now();
+  if (now - hudLast < 150) return; // text + elevation lookups off the frame path
+  hudLast = now;
   const c = map.getCenter();
   hLat.textContent = c.lat.toFixed(3);
   hLng.textContent = c.lng.toFixed(3);
